@@ -3,35 +3,80 @@ from anki.hooks import addHook
 from aqt.utils import showInfo
 import inspect
 import os
+import re
 
-replaceJS = """
-var snippets = [['mrm', 'mathrm'], ['mbf', 'mathbf'], ['l', 'lol']];
-theirInput = currentField.innerHTML;
+global posIdx
+global caretPositions
 
-for (var i = 0; i < snippets.length; i++) {
-    if (theirInput.endsWith(snippets[i][0])) {
-        var toReplace = currentField.innerHTML.replace(snippets[i][0], snippets[i][1]);
-        currentField.innerHTML = toReplace;
-    }
-}
+# To fix:
+# - Moving cursor once input is added
+# - Using this several times
+
+prompt = "frac"
+
+# Need four backslashes to escape backslash when it is in Python, and again when passed to JavaScript
+snippet = "\\\\frac{$2}{$1}$3"
+
+insertInput = """
+var input = "%s";
+var theirInput = currentField.innerHTML;
+currentField.innerHTML = theirInput.concat(input);
+
+// Move caret to end of word
+var s = window.getSelection();
+var r = s.getRangeAt(0);
+var fieldContent = currentField.innerHTML;
+r = s.getRangeAt(0);
+r.setStart(r.startContainer, r.startOffset + currentField.innerHTML.length);
+r.collapse(true);
+s.removeAllRanges();
+s.addRange(r);
 """
 
-# replaceJS = """document.write(currentField.innerHTML);"""
+# Modified from function wrap() in Anki's editor.js
+moveCaretToPos = """
+var shift = %s;
+
+var s = window.getSelection();
+var r = s.getRangeAt(0);
+
+r = s.getRangeAt(0);
+r.setStart(r.startContainer, r.startOffset + shift);
+r.collapse(true);
+s.removeAllRanges();
+s.addRange(r);
+"""
 
 def onSetupShortcuts(cuts, self):
-    cuts.append(("Shift+Tab", self.insertArbitraryWrapper))
+    cuts.append(("Shift+Tab", self.insertSnippet))
+    cuts.append(("Ctrl+J", self.nextCaretPos))
 
-def insertArbitraryWrapper(self):
-    # self.web.eval(replaceJS)
-    self.web.eval(replaceJS)
-    # showInfo(self.web.eval("currentField.innerHTML"))
-    # output = self.web.evalWithCallback("currentField.innerHTML;", lambda x : x)
-    # logFile.write(str(inspect.getmembers(self.currentField)))
-    # showInfo(str(type(inspect.getmembers(self.currentField))))
-    # showInfo(str(self.currentfield))
-    # self.web.eval("document.write('test output')")
+def insertSnippet(self):
+    global caretPositions
+    global posIdx
+    posIdx = 0
+    matched = list(re.finditer(r'\$\d', snippet))
+    indices = [matched[i].start() for i in range(len(matched))]
+    indicesCorrected = [indices[i] - 2*i for i in range(len(indices))]  # Correct for additional two characters with $\d
+    positions = [int(matched[i].group()[1]) for i in range(len(matched))]
 
-logFile = open(os.path.expanduser("~/Desktop/LogOut.txt"), "w+")
+    caretPositions = list(zip(indicesCorrected, positions))
+    caretPositions.sort(key = lambda t: t[1])
+    toInsert = re.sub(r'\$\d', '', snippet)
+    # self.web.eval('currentField.innerHTML = "' + toInsert + '";')
+    self.web.eval(insertInput % toInsert)
+    self.web.eval(moveCaretToPos % (caretPositions[0][0] - len(toInsert)))
+    posIdx += 1
 
-editor.Editor.insertArbitraryWrapper = insertArbitraryWrapper
+def nextCaretPos(self):
+    try:
+        global caretPositions
+        global posIdx
+        self.web.eval(moveCaretToPos % (caretPositions[posIdx][0] - caretPositions[posIdx-1][0]))
+        posIdx += 1
+    except:
+        pass
+
+editor.Editor.insertSnippet = insertSnippet
+editor.Editor.nextCaretPos = nextCaretPos
 addHook("setupEditorShortcuts", onSetupShortcuts)
