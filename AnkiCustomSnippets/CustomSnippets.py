@@ -5,8 +5,9 @@ import inspect
 import os
 import re
 
+global toInsert
 global posIdx
-global caretPositions
+# global caretPositions
 
 # To fix:
 # - Moving cursor once input is added
@@ -21,58 +22,72 @@ insertInput = """
 var input = "%s";
 var theirInput = currentField.innerHTML;
 currentField.innerHTML = theirInput.concat(input);
+var idx = currentField.innerHTML.indexOf("$1");
+currentField.innerHTML = currentField.innerHTML.replace("$1", "");
 
-// Move caret to end of word
 var s = window.getSelection();
 var r = s.getRangeAt(0);
-var fieldContent = currentField.innerHTML;
 r = s.getRangeAt(0);
-r.setStart(r.startContainer, r.startOffset + currentField.innerHTML.length);
+r.setStart(r.startContainer, r.startOffset + idx);
 r.collapse(true);
 s.removeAllRanges();
 s.addRange(r);
+
+var prevIdx = idx;
 """
 
 # Modified from function wrap() in Anki's editor.js
-moveCaretToPos = """
-var shift = %s;
+replace = """
+var pos = %s;
 
-var s = window.getSelection();
-var r = s.getRangeAt(0);
+var theirInput = currentField.innerHTML;
+var idx = theirInput.indexOf("$".concat(pos));
 
+//var newInput = currentField.innerHTML.replace("$".concat(pos), "");
+//currentField.innerHTML = newInput;
+
+s = window.getSelection();
 r = s.getRangeAt(0);
-r.setStart(r.startContainer, r.startOffset + shift);
+r.setStart(r.startContainer, r.startOffset + idx - prevIdx + 2);
 r.collapse(true);
 s.removeAllRanges();
 s.addRange(r);
 """
+
+def getFieldContents():
+    test = self.web.evalWithCallback
 
 def onSetupShortcuts(cuts, self):
     cuts.append(("Shift+Tab", self.insertSnippet))
     cuts.append(("Ctrl+J", self.nextCaretPos))
 
 def insertSnippet(self):
-    global caretPositions
+    # global caretPositions
     global posIdx
-    posIdx = 0
-    matched = list(re.finditer(r'\$\d', snippet))
-    indices = [matched[i].start() for i in range(len(matched))]
-    indicesCorrected = [indices[i] - 2*i for i in range(len(indices))]  # Correct for additional two characters with $\d
-    positions = [int(matched[i].group()[1]) for i in range(len(matched))]
-
-    caretPositions = list(zip(indicesCorrected, positions))
-    caretPositions.sort(key = lambda t: t[1])
-    toInsert = re.sub(r'\$\d', '', snippet)
-    # self.web.eval('currentField.innerHTML = "' + toInsert + '";')
+    global toInsert
+    posIdx = 1
+    # matched = list(re.finditer(r'\$\d', snippet))
+    # indices = [matched[i].start() for i in range(len(matched))]
+    # indicesCorrected = [indices[i] - 2*i for i in range(len(indices))]  # Correct for additional two characters with $\d
+    # positions = [int(matched[i].group()[1]) for i in range(len(matched))]
+    #
+    # caretPositions = list(zip(indicesCorrected, positions))
+    # caretPositions.sort(key = lambda t: t[1])
+    # toInsert = re.sub(r'\$\d', '', snippet)
+    # # self.web.eval('currentField.innerHTML = "' + toInsert + '";')
+    toInsert = snippet
+    # position = toInsert.find("$1")
+    # toInsert = toInsert.replace("$1", "")
     self.web.eval(insertInput % toInsert)
-    self.web.eval(moveCaretToPos % (caretPositions[0][0] - len(toInsert)))
+    # self.web.eval(moveCaret % (position - len(toInsert)))
     posIdx += 1
 
 def nextCaretPos(self):
+    global toInsert
     try:
-        global caretPositions
+        # global caretPositions
         global posIdx
-        self.web.eval(moveCaretToPos % (caretPositions[posIdx][0] - caretPositions[posIdx-1][0]))
+        self.web.eval(replace % 2)
         posIdx += 1
     except:
         pass
